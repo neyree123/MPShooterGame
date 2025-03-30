@@ -20,6 +20,7 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 protected:
 	// Called when the game starts or when spawned
@@ -37,5 +38,15 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = Camera)
 	class UCameraComponent* followCamera;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
+	class UWidgetComponent* OverheadWidget;
+
+	UPROPERTY(ReplicatedUsing = OnRep_OverlappingWeapon)
+	class AWeaponBase* overlappingWeapon;
+
+	UFUNCTION()
+	void OnRep_OverlappingWeapon(AWeaponBase* lastWeapon);
+
 public:
+	void SetOverlappingWeapon(AWeaponBase* weapon);
 };
