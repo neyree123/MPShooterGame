@@ -8,8 +8,9 @@
 #include "Components/WidgetComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "MPShooterGame/Weapon/WeaponBase.h"
+#include "MPShooterGame/Components/CombatComponent.h"
 
-// Sets default values
+//Constructor
 APlayerCharacter::APlayerCharacter()
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -29,6 +30,21 @@ APlayerCharacter::APlayerCharacter()
 
 	OverheadWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidget"));
 	OverheadWidget->SetupAttachment(RootComponent);
+
+	combat = CreateDefaultSubobject<UCombatComponent>((TEXT("CombatComponent")));
+	combat->SetIsReplicated(true);
+
+	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
+}
+
+void APlayerCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	if (combat)
+	{
+		combat->player = this;
+	}
 }
 
 void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -49,6 +65,23 @@ void APlayerCharacter::BeginPlay()
 void APlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+#pragma region PlayerInput
+
+// Called to bind functionality to input
+void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
+	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &APlayerCharacter::EquipButtonPressed);
+	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &APlayerCharacter::CrouchButtonPressed);
+
+	PlayerInputComponent->BindAxis("MoveFoward", this, &APlayerCharacter::MoveFoward);
+	PlayerInputComponent->BindAxis("MoveRight", this, &APlayerCharacter::MoveRight);
+	PlayerInputComponent->BindAxis("Turn", this, &APlayerCharacter::Turn);
+	PlayerInputComponent->BindAxis("LookUp", this, &APlayerCharacter::LookUp);
 }
 
 void APlayerCharacter::MoveFoward(float value)
@@ -83,17 +116,42 @@ void APlayerCharacter::LookUp(float value)
 	AddControllerPitchInput(value);
 }
 
-// Called to bind functionality to input
-void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+void APlayerCharacter::EquipButtonPressed()
 {
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	if (combat)
+	{
+		if (HasAuthority())
+		{
+			combat->EquipWeapon(overlappingWeapon);
+		}
+		else
+		{
+			ServerEquippedButtonPressed();
+		}
+	}
+}
 
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
+void APlayerCharacter::CrouchButtonPressed()
+{
+	if ( bIsCrouched )
+	{
+		UnCrouch();
+	}
+	else
+	{
+		Crouch(); //Crouch is already replicated by Unreal. Can override implementation if needed.
+	}
+}
+#pragma endregion
 
-	PlayerInputComponent->BindAxis("MoveFoward", this, &APlayerCharacter::MoveFoward);
-	PlayerInputComponent->BindAxis("MoveRight", this, &APlayerCharacter::MoveRight);
-	PlayerInputComponent->BindAxis("Turn", this, &APlayerCharacter::Turn);
-	PlayerInputComponent->BindAxis("LookUp", this, &APlayerCharacter::LookUp);
+#pragma region WeaponFunctions
+
+void APlayerCharacter::ServerEquippedButtonPressed_Implementation() //RPC implmentation for equipping a weapon
+{
+	if (combat)
+	{
+		combat->EquipWeapon(overlappingWeapon);
+	}
 }
 
 void APlayerCharacter::SetOverlappingWeapon(AWeaponBase* weapon) //Only called on the server
@@ -107,7 +165,7 @@ void APlayerCharacter::SetOverlappingWeapon(AWeaponBase* weapon) //Only called o
 	overlappingWeapon = weapon;
 
 	//Set the widget for the server player
-	if (IsLocallyControlled)
+	if (IsLocallyControlled())
 	{
 		if (overlappingWeapon)
 		{
@@ -130,4 +188,10 @@ void APlayerCharacter::OnRep_OverlappingWeapon(AWeaponBase* lastWeapon)
 		lastWeapon->ShowPickupWidget(false);
 	}
 }
+
+bool APlayerCharacter::IsWeaponEquipped()
+{
+	return(combat && combat->equippedWeapon);
+}
+#pragma endregion
 

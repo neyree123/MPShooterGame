@@ -5,6 +5,7 @@
 #include "Components/SphereComponent.h"
 #include "Components/WidgetComponent.h"
 #include "MPShooterGame/Character/PlayerCharacter.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values
 AWeaponBase::AWeaponBase()
@@ -28,6 +29,7 @@ AWeaponBase::AWeaponBase()
 
 	pickupWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("PickupWidget"));
 	pickupWidget->SetupAttachment(RootComponent);
+	ShowPickupWidget(false);
 }
 
 // Called when the game starts or when spawned
@@ -51,6 +53,13 @@ void AWeaponBase::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+void AWeaponBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AWeaponBase, weaponState);
+}
+
 void AWeaponBase::OnSphereOverlap(UPrimitiveComponent* overlappedComponet, AActor* otherActor, UPrimitiveComponent* otherComp, int32 otherBodyIndex, bool bFromSweep, const FHitResult& sweepResult)
 {
 	APlayerCharacter* player = Cast<APlayerCharacter>(otherActor);
@@ -69,6 +78,46 @@ void AWeaponBase::OnEndSphereOverlap(UPrimitiveComponent* overlappedComponet, AA
 	}
 }
 
+void AWeaponBase::SetWeaponState(EWeaponState state)
+{
+	weaponState = state;
+
+	switch (weaponState)
+	{
+	case EWeaponState::EWS_Initial:
+		break;
+	case EWeaponState::EWS_Equipped:	
+		ShowPickupWidget(false);
+		GetAreaSphere()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		break;
+	case EWeaponState::EWS_Dropped:
+		break;
+	case EWeaponState::EWS_MAX:
+		break;
+	default:
+		break;
+	}
+}
+
+void AWeaponBase::OnRep_WeaponState()
+{
+	switch (weaponState)
+	{
+	case EWeaponState::EWS_Initial:
+		break;
+	case EWeaponState::EWS_Equipped:
+		ShowPickupWidget(false);
+		areaSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		break;
+	case EWeaponState::EWS_Dropped:
+		break;
+	case EWeaponState::EWS_MAX:
+		break;
+	default:
+		break;
+	}
+}
+
 void AWeaponBase::ShowPickupWidget(bool bShowWidget)
 {
 	if (pickupWidget)
@@ -76,4 +125,3 @@ void AWeaponBase::ShowPickupWidget(bool bShowWidget)
 		pickupWidget->SetVisibility(bShowWidget);
 	}
 }
-
