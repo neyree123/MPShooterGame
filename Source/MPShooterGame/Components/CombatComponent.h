@@ -25,9 +25,24 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
+	void SetAiming(bool bIsAiming);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetAiming(bool bIsAiming);
+
+	UFUNCTION()
+	void OnRep_EquippedWeapon();
 private:
 	class APlayerCharacter* player;
 
-	UPROPERTY(Replicated)
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon)
 	AWeaponBase* equippedWeapon;
+
+	UPROPERTY(Replicated)
+	bool bAiming;
+
+	UPROPERTY(EditAnywhere)
+	float baseWalkSpeed = 900.f;
+	UPROPERTY(EditAnywhere)
+	float aimWalkSpeed = 500.f;
 };

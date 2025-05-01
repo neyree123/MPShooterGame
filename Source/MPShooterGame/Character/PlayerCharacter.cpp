@@ -9,6 +9,7 @@
 #include "Net/UnrealNetwork.h"
 #include "MPShooterGame/Weapon/WeaponBase.h"
 #include "MPShooterGame/Components/CombatComponent.h"
+#include "Components/CapsuleComponent.h"
 
 //Constructor
 APlayerCharacter::APlayerCharacter()
@@ -35,6 +36,8 @@ APlayerCharacter::APlayerCharacter()
 	combat->SetIsReplicated(true);
 
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
 }
 
 void APlayerCharacter::PostInitializeComponents()
@@ -77,6 +80,8 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &APlayerCharacter::EquipButtonPressed);
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &APlayerCharacter::CrouchButtonPressed);
+	PlayerInputComponent->BindAction("Aim", IE_Pressed, this, &APlayerCharacter::AimButtonPressed);
+	PlayerInputComponent->BindAction("Aim", IE_Released, this, &APlayerCharacter::AimButtonReleased);
 
 	PlayerInputComponent->BindAxis("MoveFoward", this, &APlayerCharacter::MoveFoward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &APlayerCharacter::MoveRight);
@@ -142,6 +147,22 @@ void APlayerCharacter::CrouchButtonPressed()
 		Crouch(); //Crouch is already replicated by Unreal. Can override implementation if needed.
 	}
 }
+
+void APlayerCharacter::AimButtonPressed()
+{
+	if (combat)
+	{
+		combat->SetAiming(true);
+	}
+}
+
+void APlayerCharacter::AimButtonReleased()
+{
+	if (combat)
+	{
+		combat->SetAiming(false);
+	}
+}
 #pragma endregion
 
 #pragma region WeaponFunctions
@@ -192,6 +213,11 @@ void APlayerCharacter::OnRep_OverlappingWeapon(AWeaponBase* lastWeapon)
 bool APlayerCharacter::IsWeaponEquipped()
 {
 	return(combat && combat->equippedWeapon);
+}
+
+bool APlayerCharacter::IsAiming()
+{
+	return (combat && combat->bAiming);
 }
 #pragma endregion
 

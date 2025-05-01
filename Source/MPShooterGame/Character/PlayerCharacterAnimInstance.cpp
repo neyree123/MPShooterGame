@@ -3,6 +3,7 @@
 #include "PlayerCharacterAnimInstance.h"
 #include "PlayerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 
 void UPlayerCharacterAnimInstance::NativeInitializeAnimation()
 {
@@ -30,10 +31,24 @@ void UPlayerCharacterAnimInstance::NativeUpdateAnimation(float deltaTime)
 	speed = velocity.Size();
 
 	bIsInAir = playerCharacter->GetCharacterMovement()->IsFalling();
-
-	bIsAccelerating = playerCharacter->GetCharacterMovement()->GetCurrentAcceleration().Size() > 0.f ? true : false;
+	bIsAccelerating = playerCharacter->GetCharacterMovement()->GetCurrentAcceleration().Size() > 0.1f ? true : false;
+	bIsCrouched = playerCharacter->bIsCrouched;
 
 	bWeaponEquipped = playerCharacter->IsWeaponEquipped();
+	bAiming = playerCharacter->IsAiming();
 
-	bIsCrouched = playerCharacter->bIsCrouched;
+	//Offset yaw for strafing
+	FRotator aimRotation = playerCharacter->GetBaseAimRotation();
+	FRotator movementRotation = UKismetMathLibrary::MakeRotFromX(velocity);
+	FRotator deltaRot = UKismetMathLibrary::NormalizedDeltaRotator(movementRotation, aimRotation);
+	deltaRotation = FMath::RInterpTo(deltaRot, deltaRotation, deltaTime, 6.f);
+	yawOffset = deltaRotation.Yaw;
+
+	//Set lean value
+	playerRotationLastFrame = playerRotation;
+	playerRotation = playerCharacter->GetActorRotation();
+	const FRotator delta = UKismetMathLibrary::NormalizedDeltaRotator(playerRotation, playerRotationLastFrame);
+	const float target = delta.Yaw / deltaTime;
+	const float Interp = FMath::FInterpTo(lean, target, deltaTime, 6.f);
+	lean = FMath::Clamp(Interp, -90.f, 90.f);
 }
