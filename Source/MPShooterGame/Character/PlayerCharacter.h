@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "MPShooterGame/Types/TurnEnum.h"
+
 #include "PlayerCharacter.generated.h"
 
 UCLASS()
@@ -35,6 +37,8 @@ protected:
 	void CrouchButtonPressed();
 	void AimButtonPressed();
 	void AimButtonReleased();
+	void AimOffset(float deltaTime);
+	virtual void Jump() override;
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = Camera)
@@ -58,8 +62,23 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerEquippedButtonPressed();
 
+	float AO_Yaw;
+	float interpAO_Yaw;
+	float AO_Pitch;
+	FRotator startingAimRotation;
+
+	UPROPERTY(VisibleAnywhere)
+	ETurningInPlace turnInPlaceState;
+	void TurnInPlace(float deltaTime);
+
 public:
 	void SetOverlappingWeapon(AWeaponBase* weapon);
 	bool IsWeaponEquipped();
 	bool IsAiming();
+
+	FORCEINLINE float GetAO_Yaw() const { return AO_Yaw; }
+	FORCEINLINE float GetAO_Pitch() const { return AO_Pitch; }
+	FORCEINLINE ETurningInPlace GetTurnInPlaceState() const { return turnInPlaceState; }
+
+	AWeaponBase* GetEquippedWeapon();
 };

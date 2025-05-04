@@ -10,6 +10,7 @@
 #include "MPShooterGame/Weapon/WeaponBase.h"
 #include "MPShooterGame/Components/CombatComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Kismet/KismetMathLibrary.h"
 
 //Constructor
 APlayerCharacter::APlayerCharacter()
@@ -38,6 +39,11 @@ APlayerCharacter::APlayerCharacter()
 	GetCharacterMovement()->NavAgentProps.bCanCrouch = true;
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
 	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Ignore);
+	GetCharacterMovement()->RotationRate = FRotator(0.f, 0.f, 500.f);
+
+	turnInPlaceState = ETurningInPlace::ETIP_NotTurning;
+	NetUpdateFrequency = 66.f;
+	MinNetUpdateFrequency = 33.f;
 }
 
 void APlayerCharacter::PostInitializeComponents()
@@ -68,6 +74,8 @@ void APlayerCharacter::BeginPlay()
 void APlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	AimOffset(DeltaTime);
 }
 
 #pragma region PlayerInput
@@ -77,7 +85,7 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &APlayerCharacter::Jump);
 	PlayerInputComponent->BindAction("Equip", IE_Pressed, this, &APlayerCharacter::EquipButtonPressed);
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &APlayerCharacter::CrouchButtonPressed);
 	PlayerInputComponent->BindAction("Aim", IE_Pressed, this, &APlayerCharacter::AimButtonPressed);
@@ -119,6 +127,18 @@ void APlayerCharacter::Turn(float value)
 void APlayerCharacter::LookUp(float value)
 {
 	AddControllerPitchInput(value);
+}
+
+void APlayerCharacter::Jump()
+{
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+	else
+	{
+		Super::Jump();
+	}
 }
 
 void APlayerCharacter::EquipButtonPressed()
@@ -163,9 +183,84 @@ void APlayerCharacter::AimButtonReleased()
 		combat->SetAiming(false);
 	}
 }
+void APlayerCharacter::AimOffset(float deltaTime)
+{
+	//Only apply if player has a weapon
+	if (combat && combat->equippedWeapon == nullptr) return;
+
+	FVector velocity = GetVelocity();
+	velocity.Z = 0.0f;
+	float speed = velocity.Size();
+	bool bIsInAir = GetCharacterMovement()->IsFalling();
+
+	//Only apply yaw aim offsets if player is not moving or in air
+	if (speed == 0.f && !bIsInAir)
+	{
+		FRotator currentAimRotation = FRotator(0.f, GetBaseAimRotation().Yaw, 0.f);
+		FRotator deltaAimRotation = UKismetMathLibrary::NormalizedDeltaRotator(currentAimRotation, startingAimRotation);
+		AO_Yaw = deltaAimRotation.Yaw;
+
+		if (turnInPlaceState == ETurningInPlace::ETIP_NotTurning)
+		{
+			interpAO_Yaw = AO_Yaw;
+		}
+		bUseControllerRotationYaw = true;
+
+		TurnInPlace(deltaTime);
+	}
+	//Otherwise track the starting aim rotation
+	if (speed > 0.f || bIsInAir)
+	{
+		startingAimRotation = FRotator(0.f, GetBaseAimRotation().Yaw, 0.f);
+		AO_Yaw = 0.f;
+		bUseControllerRotationYaw = true;
+		turnInPlaceState = ETurningInPlace::ETIP_NotTurning;
+	}
+
+	AO_Pitch = GetBaseAimRotation().Pitch;
+	//Due to the way Unreal compresses rotators for network communication, we lose our negative values here
+	//This check corrects those issues
+	if (AO_Pitch > 90.f && !IsLocallyControlled())
+	{
+		//Map pitch from [270,360] to [-90,0]
+		FVector2D inRange(270.f, 360.f);
+		FVector2D outRange(-90.f, 0.f);
+		AO_Pitch = FMath::GetMappedRangeValueClamped(inRange, outRange, AO_Pitch);
+	}
+}
+
+void APlayerCharacter::TurnInPlace(float deltaTime)
+{
+	if (AO_Yaw > 90.f)
+	{
+		turnInPlaceState = ETurningInPlace::ETIP_Right;
+	}
+	else if (AO_Yaw < -90.f)
+	{
+		turnInPlaceState = ETurningInPlace::ETIP_Left;
+	}
+
+	if (turnInPlaceState != ETurningInPlace::ETIP_NotTurning)
+	{
+		interpAO_Yaw = FMath::FInterpTo(interpAO_Yaw, 0.f, deltaTime, 4.f);
+		AO_Yaw = interpAO_Yaw;
+		if (FMath::Abs(AO_Yaw) < 15.f)
+		{
+			turnInPlaceState = ETurningInPlace::ETIP_NotTurning;
+			startingAimRotation = FRotator(0.f, GetBaseAimRotation().Yaw, 0.f);
+		}
+	}
+}
 #pragma endregion
 
 #pragma region WeaponFunctions
+
+AWeaponBase* APlayerCharacter::GetEquippedWeapon()
+{
+	if(combat == nullptr) return nullptr;
+
+	return combat->equippedWeapon;
+}
 
 void APlayerCharacter::ServerEquippedButtonPressed_Implementation() //RPC implmentation for equipping a weapon
 {
